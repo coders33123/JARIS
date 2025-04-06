@@ -1,70 +1,186 @@
-save_metadata(f1, self.label_encoder.classes_)
-# Train the model and get the f1_score manually
-f1_score = manager.train_model(acronym_data)
+# model_manager.py
 
-# Save metadata
-save_metadata(f1_score, manager.label_encoder.classes_)
-def train_model(self, data: List[Dict[str, str]]) -> float:
-    ...
-    self.model.fit(X_train, y_train)
-    f1 = f1_score(y_test, self.model.predict(X_test), average='weighted')
-    ...
-    return f1
-visualize_encoded(manager, [item["acronym"] for item in acronym_data])
-df.to_csv("encoded_acronyms.csv", index=False)
-from typing import Any
+import os
+import json
+import joblib
+import pandas as pd
+from datetime import datetime
+from sklearn.model_selection import cross_val_score
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.preprocessing import LabelEncoder
 
-def select_best_model(data: List[Dict[str, str]]) -> Any:
-    ...
-    return best_model
-if __name__ == "__main__":
-    import pandas as pd
-    import json
-    from datetime import datetime
-    from sklearn.tree import DecisionTreeClassifier
-    from model_manager import ModelManager  # Adjust import if needed
 
-    acronym_data = [
-        {"acronym": "JARIS", "output": "TIME"},
-        {"acronym": "RAV", "output": "RESET"},
-        {"acronym": "ZEL", "output": "SURVIVAL"},
-        {"acronym": "MIR", "output": "CONTROL"},
-    ]
+class ModelManager:
+    def __init__(self, model=None, retrain_f1_threshold=0.8):
+        self.model = model
+        self.retrain_f1_threshold = retrain_f1_threshold
+        self.label_encoder = None
+        self.training_data = []
 
-    manager = ModelManager(model=DecisionTreeClassifier(), retrain_f1_threshold=0.8)
-    f1 = manager.train_model(acronym_data)
+    def encode_acronym_jep(self, acronym: str):
+        return [ord(char) - ord('A') + 1 for char in acronym.upper()]
 
-    test_input = "JARIS"
-    prediction = manager.predict(test_input)
-    print(f"Prediction for {test_input}: {prediction}")
+    def prepare_training_data(self, data: list[dict]):
+        self.label_encoder = LabelEncoder()
+        X = [self.encode_acronym_jep(item["acronym"]) for item in data]
+        y = self.label_encoder.fit_transform([item["output"] for item in data])
+        return X, y
 
-    # Visualization
-    def visualize_encoded(manager, acronym_list):
-        rows = []
-        for acr in acronym_list:
-            encoded = manager.encode_acronym_jep(acr)
-            rows.append({
-                "Acronym": acr,
-                "Values": encoded["values"],
-                "Flips": encoded["flips"],
-                "Flip Types": encoded["flip_types"],
-                "Weights": encoded["weights"],
-                "Freq Scores": encoded["freq_scores"],
-            })
-        df = pd.DataFrame(rows)
-        print(df.to_string(index=False))
+    def train_model(self, data: list[dict]):
+        X, y = self.prepare_training_data(data)
+        self.model.fit(X, y)
 
-    visualize_encoded(manager, [item["acronym"] for item in acronym_data])
+    def select_and_train_best_model(self, data: list[dict]):
+        models = {
+            "DecisionTree": DecisionTreeClassifier(),
+            "RandomForest": RandomForestClassifier(n_estimators=50)
+        }
 
-    # Metadata Save
-    def save_metadata(f1_score, label_classes, model_path="jaris_model.joblib"):
+        best_model, best_score, best_name = None, -1, ""
+        X, y = self.prepare_training_data(data)
+
+        for name, model in models.items():
+            scores = cross_val_score(model, X, y, cv=5, scoring='f1_weighted')
+            avg_score = scores.mean()
+            print(f"[Model Selection] {name}: F1={avg_score:.4f}")
+            if avg_score > best_score:
+                best_model, best_score, best_name = model, avg_score, name
+
+        self.model = best_model
+        self.train_model(data)
+        version = datetime.now().strftime("%Y%m%d%H%M%S")
+        model_path = self.save_model(version)
+        self.save_metadata(best_score, self.label_encoder.classes_, model_path, best_name)
+        self.log_performance(best_score, best_name, version)
+
+        print(f"[ModelManager] Best model: {best_name} with F1={best_score:.4f}")
+        return best_name, best_score
+
+    def predict(self, acronym: str):
+        features = [self.encode_acronym_jep(acronym)]
+        prediction = self.model.predict(features)
+        return self.label_encoder.inverse_transform(prediction)[0]
+
+    def save_model(self, version=None):
+        version = version or datetime.now().strftime("%Y%m%d%H%M%S")
+        filename = f"jaris_model_v{version}.joblib"
+        joblib.dump(self.model, filename)
+        return filename
+
+    def save_metadata(self, f1_score, label_classes, model_path, model_name):
         metadata = {
             "f1_score": f1_score,
             "labels": list(label_classes),
             "timestamp": datetime.now().isoformat(),
-            "model_path": model_path
+            "model_path": model_path,
+            "model_name": model_name
         }
         with open("jaris_model_metadata.json", "w") as f:
             json.dump(metadata, f, indent=4)
 
-    save_metadata(f1, manager.label_encoder.classes_)
+    def log_performance(self, f1_score, model_name, version):
+        log_file = "performance_log.csv"
+        row = {
+            "timestamp": datetime.now().isoformat(),
+            "model_version": version,
+            "model_name": model_name,
+            "f1_score": f1_score
+        }
+        df = pd.DataFrame([row])
+        if os.path.exists(log_file):
+            df.to_csv(log_file, mode='a', header=False, index=False)
+        else:
+            df.to_csv(log_file, index=False)
+
+    def add_feedback(self, acronym, correct_output):
+        self.training_data.append({"acronym": acronym, "output": correct_output})
+        print(f"[Feedback] Added: ({acronym} -> {correct_output})")
+        self.select_and_train_best_model(self.training_data)
+# cli.py
+
+import argparse
+from model_manager import ModelManager
+from sklearn.tree import DecisionTreeClassifier
+import joblib
+
+def main():
+    parser = argparse.ArgumentParser(description="Manage JARIS model training and prediction.")
+    parser.add_argument('--train', action='store_true', help="Train the model with given data.")
+    parser.add_argument('--predict', type=str, help="Predict the output for a given acronym.")
+    parser.add_argument('--feedback', type=str, nargs=2, metavar=('ACRONYM', 'OUTPUT'), help="Provide feedback to the model.")
+
+    args = parser.parse_args()
+
+    model = DecisionTreeClassifier()  # Initialize with a simple model (can be replaced)
+
+    manager = ModelManager(model)
+
+    if args.train:
+        # Load your training data here
+        training_data = [{"acronym": "NASA", "output": "National Aeronautics and Space Administration"}, 
+                         {"acronym": "FBI", "output": "Federal Bureau of Investigation"}]
+        manager.select_and_train_best_model(training_data)
+
+    if args.predict:
+        result = manager.predict(args.predict)
+        print(f"Prediction for {args.predict}: {result}")
+
+    if args.feedback:
+        acronym, output = args.feedback
+        manager.add_feedback(acronym, output)
+        print(f"Feedback added for {acronym} -> {output}")
+
+if __name__ == '__main__':
+    main()
+# cli.py
+
+import argparse
+from model_manager import ModelManager
+from sklearn.tree import DecisionTreeClassifier
+import joblib
+
+def main():
+    parser = argparse.ArgumentParser(description="Manage JARIS model training and prediction.")
+    parser.add_argument('--train', action='store_true', help="Train the model with given data.")
+    parser.add_argument('--predict', type=str, help="Predict the output for a given acronym.")
+    parser.add_argument('--feedback', type=str, nargs=2, metavar=('ACRONYM', 'OUTPUT'), help="Provide feedback to the model.")
+
+    args = parser.parse_args()
+
+    model = DecisionTreeClassifier()  # Initialize with a simple model (can be replaced)
+
+    manager = ModelManager(model)
+
+    if args.train:
+        # Load your training data here
+        training_data = [{"acronym": "NASA", "output": "National Aeronautics and Space Administration"}, 
+                         {"acronym": "FBI", "output": "Federal Bureau of Investigation"}]
+        manager.select_and_train_best_model(training_data)
+
+    if args.predict:
+        result = manager.predict(args.predict)
+        print(f"Prediction for {args.predict}: {result}")
+
+    if args.feedback:
+        acronym, output = args.feedback
+        manager.add_feedback(acronym, output)
+        print(f"Feedback added for {acronym} -> {output}")
+
+if __name__ == '__main__':
+    main()
+def save_model(self, version=None):
+    version = version or datetime.now().strftime("%Y%m%d%H%M%S")
+    filename = f"jaris_model_v{version}.joblib"
+    model_dir = 'models/'  # Example directory to save models
+    os.makedirs(model_dir, exist_ok=True)
+    filepath = os.path.join(model_dir, filename)
+    joblib.dump(self.model, filepath)
+    return filepath
+import json
+
+def load_training_data(self, data_file):
+    with open(data_file, 'r') as file:
+        data = json.load(file)
+    return data
+
