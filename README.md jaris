@@ -1,29 +1,44 @@
-save_metadata(f1, self.label_encoder.classes_)
-# Train the model and get the f1_score manually
-f1_score = manager.train_model(acronym_data)
+from sklearn.model_selection import cross_val_score
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.ensemble import RandomForestClassifier
 
-# Save metadata
-save_metadata(f1_score, manager.label_encoder.classes_)
-def train_model(self, data: List[Dict[str, str]]) -> float:
-    ...
-    self.model.fit(X_train, y_train)
-    f1 = f1_score(y_test, self.model.predict(X_test), average='weighted')
-    ...
-    return f1
-visualize_encoded(manager, [item["acronym"] for item in acronym_data])
-df.to_csv("encoded_acronyms.csv", index=False)
-from typing import Any
+class ModelManager:
+    # Existing __init__, encode_acronym_jep, prepare_training_data, train_model, etc.
 
-def select_best_model(data: List[Dict[str, str]]) -> Any:
-    ...
-    return best_model
+    def select_and_train_best_model(self, data: list[dict]):
+        models = {
+            "DecisionTree": DecisionTreeClassifier(),
+            "RandomForest": RandomForestClassifier(n_estimators=50)
+        }
+
+        best_model, best_score, best_name = None, -1, ""
+        X, y = self.prepare_training_data(data)
+
+        for name, model in models.items():
+            scores = cross_val_score(model, X, y, cv=5, scoring='f1_weighted')
+            avg_score = scores.mean()
+            print(f"[Model Selection] {name}: F1={avg_score:.4f}")
+            if avg_score > best_score:
+                best_model, best_score, best_name = model, avg_score, name
+
+        self.model = best_model
+        self.train_model(data)  # Fit final model on all data
+        self.save_metadata(best_score, self.label_encoder.classes_, model_name=best_name)
+
+        print(f"[ModelManager] Best model: {best_name} with F1={best_score:.4f}")
+        return best_name, best_score
+
+    def save_metadata(self, f1_score, label_classes, model_path="jaris_model.joblib", model_name=""):
+        metadata = {
+            "f1_score": f1_score,
+            "labels": list(label_classes),
+            "timestamp": datetime.now().isoformat(),
+            "model_path": model_path,
+            "model_name": model_name
+        }
+        with open("jaris_model_metadata.json", "w") as f:
+            json.dump(metadata, f, indent=4)
 if __name__ == "__main__":
-    import pandas as pd
-    import json
-    from datetime import datetime
-    from sklearn.tree import DecisionTreeClassifier
-    from model_manager import ModelManager  # Adjust import if needed
-
     acronym_data = [
         {"acronym": "JARIS", "output": "TIME"},
         {"acronym": "RAV", "output": "RESET"},
@@ -31,40 +46,15 @@ if __name__ == "__main__":
         {"acronym": "MIR", "output": "CONTROL"},
     ]
 
-    manager = ModelManager(model=DecisionTreeClassifier(), retrain_f1_threshold=0.8)
-    f1 = manager.train_model(acronym_data)
+    manager = ModelManager(model=None, retrain_f1_threshold=0.8)
 
+    # Automatically select and train the best model
+    model_name, f1_score = manager.select_and_train_best_model(acronym_data)
+
+    # Predict
     test_input = "JARIS"
     prediction = manager.predict(test_input)
     print(f"Prediction for {test_input}: {prediction}")
 
-    # Visualization
-    def visualize_encoded(manager, acronym_list):
-        rows = []
-        for acr in acronym_list:
-            encoded = manager.encode_acronym_jep(acr)
-            rows.append({
-                "Acronym": acr,
-                "Values": encoded["values"],
-                "Flips": encoded["flips"],
-                "Flip Types": encoded["flip_types"],
-                "Weights": encoded["weights"],
-                "Freq Scores": encoded["freq_scores"],
-            })
-        df = pd.DataFrame(rows)
-        print(df.to_string(index=False))
-
+    # Visualize encodings
     visualize_encoded(manager, [item["acronym"] for item in acronym_data])
-
-    # Metadata Save
-    def save_metadata(f1_score, label_classes, model_path="jaris_model.joblib"):
-        metadata = {
-            "f1_score": f1_score,
-            "labels": list(label_classes),
-            "timestamp": datetime.now().isoformat(),
-            "model_path": model_path
-        }
-        with open("jaris_model_metadata.json", "w") as f:
-            json.dump(metadata, f, indent=4)
-
-    save_metadata(f1, manager.label_encoder.classes_)
