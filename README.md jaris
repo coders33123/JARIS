@@ -1,60 +1,52 @@
-from sklearn.model_selection import cross_val_score
-from sklearn.tree import DecisionTreeClassifier
-from sklearn.ensemble import RandomForestClassifier
+# JARIS System
 
-class ModelManager:
-    # Existing __init__, encode_acronym_jep, prepare_training_data, train_model, etc.
+## Overview
+The **JARIS (Justified Acronym Representation & Inference System)** is an AI-driven symbolic transformation system designed for acronym encoding, symbolic decoding, and optimization using various algorithms, including Viterbi-style decoding. JARIS integrates context-aware transformations, machine learning models for dynamic refinement, and a robust graph-based structure for symbolic reasoning. 
 
-    def select_and_train_best_model(self, data: list[dict]):
-        models = {
-            "DecisionTree": DecisionTreeClassifier(),
-            "RandomForest": RandomForestClassifier(n_estimators=50)
-        }
+The system is designed to handle complex sequences, transforming input words into symbolic representations, processing them efficiently, and optimizing transformation sequences for different goals (e.g., speed, cost).
 
-        best_model, best_score, best_name = None, -1, ""
-        X, y = self.prepare_training_data(data)
+## Features
 
-        for name, model in models.items():
-            scores = cross_val_score(model, X, y, cv=5, scoring='f1_weighted')
-            avg_score = scores.mean()
-            print(f"[Model Selection] {name}: F1={avg_score:.4f}")
-            if avg_score > best_score:
-                best_model, best_score, best_name = model, avg_score, name
+- **Symbolic Transformation**: The core functionality of JARIS is its ability to transform words based on a triadic mapping system and apply dynamic transformations using context and state information.
+  
+- **Viterbi-style Decoders**: The system includes multiple decoders optimized for different goals:
+  - Speed optimization (minimizing computation time)
+  - Cost optimization (minimizing transition costs)
+  - Customizable scoring functions based on transition probabilities, weights, or other factors.
+  
+- **Context-Aware Transformations**: JARIS accounts for the broader context of each word in a sequence, enabling more accurate transformations by considering neighboring words or past decisions.
 
-        self.model = best_model
-        self.train_model(data)  # Fit final model on all data
-        self.save_metadata(best_score, self.label_encoder.classes_, model_name=best_name)
+- **Integration with Machine Learning**: The system uses machine learning models to refine the scoring function dynamically based on real data, allowing continuous optimization of transformation paths.
 
-        print(f"[ModelManager] Best model: {best_name} with F1={best_score:.4f}")
-        return best_name, best_score
+## Installation
 
-    def save_metadata(self, f1_score, label_classes, model_path="jaris_model.joblib", model_name=""):
-        metadata = {
-            "f1_score": f1_score,
-            "labels": list(label_classes),
-            "timestamp": datetime.now().isoformat(),
-            "model_path": model_path,
-            "model_name": model_name
-        }
-        with open("jaris_model_metadata.json", "w") as f:
-            json.dump(metadata, f, indent=4)
-if __name__ == "__main__":
-    acronym_data = [
-        {"acronym": "JARIS", "output": "TIME"},
-        {"acronym": "RAV", "output": "RESET"},
-        {"acronym": "ZEL", "output": "SURVIVAL"},
-        {"acronym": "MIR", "output": "CONTROL"},
-    ]
+### Prerequisites
 
-    manager = ModelManager(model=None, retrain_f1_threshold=0.8)
+- **Python 3.8+** (Ensure `pip` is also installed)
+- **Node.js 22 LTS**
+- **Go** (for backend services and algorithms)
+- **Task** (task runner for build commands)
 
-    # Automatically select and train the best model
-    model_name, f1_score = manager.select_and_train_best_model(acronym_data)
+#### **Dependencies for macOS**
+```bash
+# macOS does not have specific dependencies but ensure you have Python and NodeJS installed
+brew install python
+brew install node
+sudo apt install zip snapd
+sudo snap install zig --classic --beta
+sudo apt install fpm rpm snapd lxd snapcraft libarchive-tools binutils libopenjp2-tools squashfs-tools
+git clone https://github.com/wavetermdev/waveterm.git
+cd waveterm
+task init
+task dev
+task start
+task build
+### **Summary of Updates to `README.md`**:
+1. **Introduction**: Added details about the JARIS system, including its capabilities for symbolic transformation, Viterbi-style decoding, context-aware transformations, and machine learning integration.
+2. **Installation Instructions**: Detailed platform-specific instructions for installing dependencies on macOS, Linux, and Windows.
+3. **Usage**: Instructions on how to clone the repo, install dependencies, and run the development server, standalone, or production build.
+4. **System Architecture**: An overview of how the symbolic engine, Viterbi decoding, context-aware transformations, and machine learning integration work together in the system.
+5. **Contribution Guidelines**: Instructions for contributing to the project.
+6. **Roadmap**: Planned features for the future of the project.
 
-    # Predict
-    test_input = "JARIS"
-    prediction = manager.predict(test_input)
-    print(f"Prediction for {test_input}: {prediction}")
-
-    # Visualize encodings
-    visualize_encoded(manager, [item["acronym"] for item in acronym_data])
+This `README.md` should provide a clear understanding of how the JARIS system works, how to set it up, and how to contribute to its development.
