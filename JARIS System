@@ -1,52 +1,153 @@
-# JARIS System
+import pennylane as qml
+import numpy as np
+import matplotlib.pyplot as plt
+import networkx as nx
+import random
 
-## Overview
-The **JARIS (Justified Acronym Representation & Inference System)** is an AI-driven symbolic transformation system designed for acronym encoding, symbolic decoding, and optimization using various algorithms, including Viterbi-style decoding. JARIS integrates context-aware transformations, machine learning models for dynamic refinement, and a robust graph-based structure for symbolic reasoning. 
-
-The system is designed to handle complex sequences, transforming input words into symbolic representations, processing them efficiently, and optimizing transformation sequences for different goals (e.g., speed, cost).
-
+# --- JARIS System Overview ---
 ## Features
+# The JARIS system handles symbolic transformation, Viterbi-style decoding, and optimization.
+# It uses machine learning to refine transformation paths, ensuring optimization over time.
 
-- **Symbolic Transformation**: The core functionality of JARIS is its ability to transform words based on a triadic mapping system and apply dynamic transformations using context and state information.
-  
-- **Viterbi-style Decoders**: The system includes multiple decoders optimized for different goals:
-  - Speed optimization (minimizing computation time)
-  - Cost optimization (minimizing transition costs)
-  - Customizable scoring functions based on transition probabilities, weights, or other factors.
-  
-- **Context-Aware Transformations**: JARIS accounts for the broader context of each word in a sequence, enabling more accurate transformations by considering neighboring words or past decisions.
+# Symbolic Transformation - Triadic Mapping System
+triadic_mapping = {
+    "A": 1, "B": 2, "C": 3, "D": 4, "E": 1, "F": 2, "G": 3, "H": 4, "I": 1,
+    "J": 2, "K": 3, "L": 4, "M": 5, "N": 6, "O": 2, "P": 3, "Q": 4, "R": 5,
+    "S": 6, "T": 7, "U": 2, "V": 3, "W": 4, "X": 5, "Y": 6, "Z": 7
+}
 
-- **Integration with Machine Learning**: The system uses machine learning models to refine the scoring function dynamically based on real data, allowing continuous optimization of transformation paths.
+# --- Quantum Circuit Setup (PQC Definition) ---
+num_qubits = 2
+dev = qml.device("default.qubit", wires=num_qubits)
 
-## Installation
+@qml.qnode(dev)
+def belief_circuit(angles):
+    """Creates a quantum circuit to represent belief states of words."""
+    for i in range(num_qubits):
+        qml.RX(angles[i], wires=i)
+        qml.RY(angles[i + num_qubits], wires=i)
+    return qml.probs(wires=range(num_qubits))
 
-### Prerequisites
+def cost_function(angles, target_probabilities):
+    """Computes the cost between current belief state and target probabilities."""
+    probabilities = belief_circuit(angles)
+    return np.mean((probabilities - target_probabilities)**2)
 
-- **Python 3.8+** (Ensure `pip` is also installed)
-- **Node.js 22 LTS**
-- **Go** (for backend services and algorithms)
-- **Task** (task runner for build commands)
+class Agent:
+    """Represents an agent that updates beliefs based on target probabilities."""
+    def __init__(self, initial_angles):
+        self.angles = initial_angles
+        self.optimizer = qml.AdamOptimizer(stepsize=0.1)
+        
+    def update_belief(self, target_probabilities, steps=100):
+        """Updates agent belief based on target probabilities."""
+        for step in range(steps):
+            self.angles = self.optimizer.step(cost_function, self.angles, target_probabilities=target_probabilities)
+            
+    def get_belief_probabilities(self):
+        """Returns the agent's current belief probabilities."""
+        return belief_circuit(self.angles)
 
-#### **Dependencies for macOS**
-```bash
-# macOS does not have specific dependencies but ensure you have Python and NodeJS installed
-brew install python
-brew install node
-sudo apt install zip snapd
-sudo snap install zig --classic --beta
-sudo apt install fpm rpm snapd lxd snapcraft libarchive-tools binutils libopenjp2-tools squashfs-tools
-git clone https://github.com/wavetermdev/waveterm.git
-cd waveterm
-task init
-task dev
-task start
-task build
-### **Summary of Updates to `README.md`**:
-1. **Introduction**: Added details about the JARIS system, including its capabilities for symbolic transformation, Viterbi-style decoding, context-aware transformations, and machine learning integration.
-2. **Installation Instructions**: Detailed platform-specific instructions for installing dependencies on macOS, Linux, and Windows.
-3. **Usage**: Instructions on how to clone the repo, install dependencies, and run the development server, standalone, or production build.
-4. **System Architecture**: An overview of how the symbolic engine, Viterbi decoding, context-aware transformations, and machine learning integration work together in the system.
-5. **Contribution Guidelines**: Instructions for contributing to the project.
-6. **Roadmap**: Planned features for the future of the project.
+    def get_belief_angles(self):
+        """Returns the agent's current angles (belief states)."""
+        return self.angles
 
-This `README.md` should provide a clear understanding of how the JARIS system works, how to set it up, and how to contribute to its development.
+# Visualization Function
+def visualize_belief_state(probabilities, agent_id, step):
+    """Visualizes the belief state of an agent."""
+    labels = [f'|{i:0{num_qubits}b}>' for i in range(len(probabilities))]
+    plt.figure(figsize=(8, 6))
+    plt.bar(labels, probabilities)
+    plt.title(f"Agent {agent_id} Belief State - Step {step}")
+    plt.xlabel("Basis States")
+    plt.ylabel("Probability")
+    plt.ylim(0, 1)
+    plt.show()
+
+# --- Graph Representation of Words and Transformations ---
+# Build a graph to represent word transformations
+G = nx.DiGraph()
+
+# Add words and their attributes
+words = {
+    "DATA": {"category": "Information", "numeric": [68, 65, 84, 65]},
+    "AGRG": {"category": "Flipped Data", "numeric": [65, 71, 82, 71]},
+    "TIME": {"category": "Temporal", "numeric": [84, 73, 77, 69]},
+    "IMET": {"category": "Flipped Time", "numeric": [73, 77, 69, 84]},
+    "CODE": {"category": "Programming", "numeric": [67, 79, 68, 69]},
+    "EDOC": {"category": "Flipped Code", "numeric": [69, 68, 79, 67]}
+}
+
+for word, attributes in words.items():
+    G.add_node(word, **attributes)
+
+# Add transformation edges between words
+edges = [
+    ("DATA", "AGRG", "Flipping"),
+    ("TIME", "IMET", "Flipping"),
+    ("CODE", "EDOC", "Flipping"),
+    ("DATA", "ATAD", "Letter Reversal"),
+    ("TIME", "EMIT", "Letter Reversal"),
+    ("CODE", "EDOC", "Letter Reversal"),
+]
+
+for u, v, transformation in edges:
+    G.add_edge(u, v, transformation=transformation)
+
+# --- Graph Visualization ---
+def plot_graph():
+    """Visualizes the word transformation graph."""
+    plt.figure(figsize=(8, 6))
+    pos = nx.spring_layout(G)
+    nx.draw(G, pos, with_labels=True, node_color='lightblue', edge_color='gray', node_size=3000, font_size=10)
+    edge_labels = {(u, v): d["transformation"] for u, v, d in G.edges(data=True)}
+    nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels)
+    plt.title("Word Transformation Graph")
+    plt.show()
+
+# --- Simulation Loop (Belief Update and Visualization) ---
+def simulate_agents(num_agents=3, steps=5):
+    """Simulates agent belief updates and visualizations."""
+    agents = []
+    for _ in range(num_agents):
+        initial_angles = np.random.rand(num_qubits * 2)
+        agents.append(Agent(initial_angles))
+
+    for step in range(steps):
+        print(f"--- Simulation Step {step + 1} ---")
+        for i, agent in enumerate(agents):
+            target_probabilities = np.random.rand(2**num_qubits)
+            target_probabilities /= np.sum(target_probabilities)  # Normalize
+            print(f"Agent {i} before update: {agent.get_belief_probabilities()}")
+            agent.update_belief(target_probabilities)
+            print(f"Agent {i} after update: {agent.get_belief_probabilities()}")
+            visualize_belief_state(agent.get_belief_probabilities(), i, step + 1)
+
+# --- Graph Analysis ---
+def analyze_graph():
+    """Analyzes the graph for cycles, pagerank, and transformations."""
+    print("Nodes and Attributes:")
+    for node, attr in G.nodes(data=True):
+        print(f"{node}: {attr}")
+
+    print("\nEdges and Transformations:")
+    for u, v, attr in G.edges(data=True):
+        print(f"{u} -> {v}: {attr['transformation']}")
+
+    cycles = list(nx.simple_cycles(G))
+    print("\nDetected Cycles:", cycles)
+
+    pagerank = nx.pagerank(G)
+    print("\nPageRank (Importance of Nodes):", pagerank)
+
+# --- Usage Example ---
+if __name__ == "__main__":
+    # Visualizing the word transformation graph
+    plot_graph()
+
+    # Running the simulation of agent belief updates
+    simulate_agents()
+
+    # Performing graph analysis (e.g., detecting cycles and page rank)
+    analyze_graph()
+pip install pennylane networkx matplotlib numpy
